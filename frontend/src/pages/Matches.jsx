@@ -1,8 +1,8 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Search, CalendarDays, Trophy, ArrowLeft } from "lucide-react";
 
-const matchData = [
+const demoMatchData = [
     { date: "2026-10-28", home: "Real Madrid", away: "Liverpool", homeScore: 2, awayScore: 1 },
     { date: "2026-10-28", home: "Barcelona", away: "Bayern Munich", homeScore: 3, awayScore: 2 },
     { date: "2026-10-29", home: "PSG", away: "Arsenal", homeScore: 1, awayScore: 1 },
@@ -17,6 +17,30 @@ const matchData = [
 
 export default function Matches() {
     const [search, setSearch] = useState("");
+    const [matchData, setMatchData] = useState(demoMatchData);
+    const [databaseConnected, setDatabaseConnected] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        fetch("http://localhost:8000/api/v1/matches?limit=100")
+            .then((response) => {
+                if (!response.ok) throw new Error("API unavailable");
+                return response.json();
+            })
+            .then((rows) => {
+                if (cancelled) return;
+                if (rows.length) setMatchData(rows.map((match) => ({
+                    date: match.kickoff_at.slice(0, 10),
+                    home: match.home, away: match.away,
+                    homeScore: match.home_score, awayScore: match.away_score,
+                })));
+                setDatabaseConnected(true);
+            })
+            .catch(() => {
+                if (!cancelled) setDatabaseConnected(false);
+            });
+        return () => { cancelled = true; };
+    }, []);
     const [dateFilter, setDateFilter] = useState("");
 
     const filteredMatches = matchData.filter((match) => {
@@ -106,8 +130,9 @@ export default function Matches() {
             </a>
 
             <p className="demo-note">
-                Demo match data for development purposes. Not verified official UCL results.
+                {databaseConnected ? "Connected to the soccer database" : "Demo match data for development purposes"} · Not verified official UCL results.
             </p>
         </div>
     );
 }
+

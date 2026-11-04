@@ -1,5 +1,5 @@
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
     LayoutDashboard,
     CalendarDays,
@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
-const matches = [
+const demoMatches = [
     { home: "Real Madrid", away: "Liverpool", score: "2 - 1", date: "Nov 1, 2026" },
     { home: "Barcelona", away: "Bayern Munich", score: "3 - 2", date: "Oct 31, 2026" },
     { home: "Arsenal", away: "PSG", score: "1 - 1", date: "Oct 30, 2026" },
@@ -23,7 +23,7 @@ const matches = [
     { home: "Dortmund", away: "Juventus", score: "2 - 0", date: "Oct 28, 2026" },
 ];
 
-const players = [
+const demoPlayers = [
     { name: "Kylian Mbappé", club: "Real Madrid", goals: 8, assists: 3 },
     { name: "Erling Haaland", club: "Manchester City", goals: 7, assists: 2 },
     { name: "Harry Kane", club: "Bayern Munich", goals: 6, assists: 3 },
@@ -32,6 +32,50 @@ const players = [
 ];
 
 function Dashboard() {
+    const [matches, setMatches] = useState(demoMatches);
+    const [players, setPlayers] = useState(demoPlayers);
+    const [databaseConnected, setDatabaseConnected] = useState(false);
+
+    useEffect(() => {
+        let cancelled = false;
+        Promise.all([
+            fetch("http://localhost:8000/api/health").then((response) => {
+                if (!response.ok) throw new Error("API unavailable");
+                return response.json();
+            }),
+            fetch("http://localhost:8000/api/v1/matches?limit=5").then((response) => {
+                if (!response.ok) throw new Error("Match query failed");
+                return response.json();
+            }),
+            fetch("http://localhost:8000/api/v1/players/top?limit=5").then((response) => {
+                if (!response.ok) throw new Error("Player query failed");
+                return response.json();
+            }),
+        ]).then(([, apiMatches, apiPlayers]) => {
+            if (cancelled) return;
+            if (apiMatches.length) setMatches(apiMatches.map((match) => ({
+                home: match.home, away: match.away,
+                score: match.home_score == null ? "—" : (match.home_score + " - " + match.away_score),
+                date: new Date(match.kickoff_at).toLocaleDateString("en-US", {
+                    month: "short", day: "numeric", year: "numeric"
+                }),
+            })));
+            if (apiPlayers.length) setPlayers(apiPlayers);
+            setDatabaseConnected(true);
+        }).catch(() => {
+            if (!cancelled) setDatabaseConnected(false);
+        });
+        return () => { cancelled = true; };
+    }, []);
+    const goalRows = matches.map((match) => {
+        const scores = String(match.score).match(/\d+/g) || [];
+        return {
+            ...match,
+            goals: scores.length === 2 ? Number(scores[0]) + Number(scores[1]) : null,
+        };
+    }).filter((match) => match.goals !== null);
+    const peakGoals = Math.max(1, ...goalRows.map((match) => match.goals));
+    const totalRecentGoals = goalRows.reduce((sum, match) => sum + match.goals, 0);
     return (
         <div className="app-layout">
             <aside className="sidebar">
@@ -176,20 +220,37 @@ function Dashboard() {
                     <div className="panel-header">
                         <div>
                             <h2>Performance Analytics</h2>
-                            <p>Explore match and player performance data</p>
+                            <p>Goals scored across the latest results</p>
                         </div>
                         <BarChart3 size={22} />
                     </div>
-                    <div className="analytics-placeholder">
-                        <TrendingUp size={35} />
-                        <h3>More insights coming soon</h3>
-                        <p>Next we'll connect the dashboard to PostgreSQL and real football statistics.</p>
+                    <div className="goal-insights">
+                        <div className="goal-insights-summary">
+                            <div>
+                                <span className="goal-insights-label">TOTAL GOALS</span>
+                                <strong>{totalRecentGoals}</strong>
+                            </div>
+                            <span className="goal-insights-chip">LAST {goalRows.length} MATCHES</span>
+                        </div>
+                        <div className="goal-bars">
+                            {goalRows.map((match) => (
+                                <div className="goal-bar-row" key={match.home + "-" + match.away}>
+                                    <div className="goal-bar-heading">
+                                        <span><b>{match.home}</b><i>vs</i><b>{match.away}</b></span>
+                                        <strong>{match.goals}</strong>
+                                    </div>
+                                    <div className="goal-bar-track">
+                                        <span style={{ width: ((match.goals / peakGoals) * 100) + "%" }} />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
                     </div>
                 </section>
 
                 <footer className="footer">
                     <Clock size={14} />
-                    Demo dashboard · Sample data only · Not verified match results
+                    {databaseConnected ? "Database connected" : "Demo data"} · Sample data only · Not verified match results
                 </footer>
             </main>
         </div>
@@ -197,3 +258,6 @@ function Dashboard() {
 }
 
 export default Dashboard;
+
+
+
